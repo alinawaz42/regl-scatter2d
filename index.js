@@ -25,7 +25,9 @@ function Scatter (options) {
 
     this.regl = createRegl({
       gl: this.plot.gl,
-      pixelRatio: this.plot.pixelRatio
+      pixelRatio: this.plot.pixelRatio,
+      extensions: ['OES_texture_float'],
+      optionalExtensions: ['oes_texture_float_linear']
     })
 
     this.plot.addObject(this)
@@ -37,7 +39,9 @@ function Scatter (options) {
       pixelRatio: options.pixelRatio || this.pixelRatio,
       gl: options.gl,
       container: options.container,
-      canvas: options.canvas
+      canvas: options.canvas,
+      extensions: ['OES_texture_float'],
+      optionalExtensions: ['oes_texture_float_linear']
     })
   }
 
@@ -110,7 +114,67 @@ Scatter.prototype.init = function (options) {
     data: null
   })
 
+  //this texture keeps params of every point
+  this.pointTexture = regl.texture({
+    format: 'rgba',
+    type: 'float'
+  })
+
+  //buffer with upgoing ids
+  let ids = new Float32Array(4096*4096)
+  for (let i = 0; i < ids.length; i++) {
+    ids[i] = i
+  }
+  this.idBuffer = regl.buffer({
+    usage: 'static',
+    type: 'float',
+    data: ids
+  })
+
   this.update(options)
+
+  this.drawTexture = regl({
+    vert: `
+      precision highp float;
+
+      uniform vec2 shape;
+      uniform sampler2D points;
+
+      attribute float id;
+
+      void main () {
+        float x = mod(id, shape.x);
+        float y = floor(id / shape.x);
+
+        vec2 xy = vec2(x/shape.x, y/shape.y);
+
+        vec4 point = texture2D(points, xy);
+
+        xy.x += point.x;
+        xy.y += point.y;
+
+        gl_Position = vec4(xy * 2. - 1., 0, 1);
+
+        gl_PointSize = .5;
+      }
+    `,
+    frag: `
+      void main() {
+        gl_FragColor = vec4(0,1,1,1);
+      }
+    `,
+    attributes: {
+      id: {
+        buffer: this.idBuffer
+      }
+    },
+    uniforms: {
+      shape: [256,256],
+      points: this.pointTexture
+    },
+    count: 256*256,
+    primitive: 'points'
+  })
 
   this.drawPoints = regl({
     vert: `
@@ -255,7 +319,8 @@ Scatter.prototype.update = function (options) {
     this.scale[1] = Math.max(this.scale[1], 1e-10)
   }
 
-  //update buffer
+
+  //update positions
   if (positions != null) {
     if (this.cluster) {
       //do clustering
@@ -263,14 +328,30 @@ Scatter.prototype.update = function (options) {
       this.getPoints = clusterPoints(positions)
     }
     else {
-      this.positionBuffer(positions)
+      // this.positionBuffer(positions)
       this.pointCount = Math.floor(positions.length / 2)
     }
     this.positions = positions
 
     //update bounds
     this.bounds = getBounds(positions, 2)
+
+    //texture with points
+    let dim = Math.ceil(Math.log2(Math.sqrt(this.positions.length/2)))
+    let radius = 2 << dim
+
+    let data = Array(radius*radius*4)
+    for (let i = 0; i < this.pointCount; i++) {
+      data[i*4] = positions[i*2]
+      data[i*4 + 1] = positions[i*2+1]
+    }
+
+    this.pointTexture({
+      radius: radius,
+      data: data
+    })
   }
+
 
   //sizes
   if (size != null) {
@@ -280,7 +361,9 @@ Scatter.prototype.update = function (options) {
     }
   }
 
+
   if (borderSize != null) this.borderSize = borderSize
+
 
   //reobtain points in case if translate/scale/positions changed
   if (scale != null || positions != null) {
@@ -324,55 +407,6 @@ Scatter.prototype.update = function (options) {
     this.borderColor = borderColor
   }
 
-  //aggregate glyphs
-  if (glyph != null) {
-    // var glyphChars = {}
-    // for (var i = 0, l = this.pointCount, k = 0; i < l; i++) {
-    //   var char = glyphs[i]
-    //   if (glyphChars[char] == null) {
-    //     glyphChars[char] = k++
-    //   }
-    // }
-  }
-
-
-
-  //update atlas
-  /*
-  var maxSize = 0
-  for (var i = 0, l = sizes.length; i < l; ++i) {
-    if (sizes[i] > maxSize) maxSize = sizes[i]
-  }
-  var oldStep = this.charStep
-  this.charStep = clamp(Math.ceil(maxSize*4), 128, 768)
-
-  var chars = Object.keys(glyphChars)
-  var step = this.charStep
-  var charSize = Math.floor(step / 2)
-  var maxW = gl.getParameter(gl.MAX_TEXTURE_SIZE)
-  var maxChars = (maxW / step) * (maxW / step)
-  var atlasW = Math.min(maxW, step*chars.length)
-  var atlasH = Math.min(maxW, step*Math.ceil(step*chars.length/maxW))
-  var cols = Math.floor(atlasW / step)
-  if (chars.length > maxChars) {
-    console.warn('gl-scatter2d-fancy: number of characters is more than maximum texture size. Try reducing it.')
-  }
-
-  //do not overupdate atlas
-  if (!this.chars || (this.chars+'' !== chars+'') || this.charStep != oldStep) {
-    this.charCanvas = atlas({
-      canvas: this.charCanvas,
-      family: 'sans-serif',
-      size: charSize,
-      shape: [atlasW, atlasH],
-      step: [step, step],
-      chars: chars,
-      align: true
-    })
-    this.chars = chars
-  }
-  */
-
   return this
 }
 
@@ -406,7 +440,8 @@ Scatter.prototype.draw = function () {
     this.translate[1] = - dataBox[1]
   }
 
-  this.drawPoints()
+  this.drawTexture()
+  // this.drawPoints()
   // this.drawTest()
 
   return this.pointCount

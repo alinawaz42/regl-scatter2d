@@ -10,19 +10,19 @@ const cluster = require('../point-cluster')
 const rgba = require('color-rgba')
 
 
-let N = 5e4
+let N = 1e5
 let scatter = createScatter({
 	positions: generate(N),
 	// positions: [0,0, 1,1, -1,-1, 1,-1, -1,1, 0,1, 0,-1, 1,0, -1,0],
 
-	size:  Array(N).fill(15).map(x => Math.random() * x),
-	// size: 10,
-	color: Array(N).fill(0).map(() =>
-				[Math.random(), Math.random(), Math.random(), Math.random()]
-			),
-	// color: 'rgba(0, 10, 10, .3)',
+	// size:  Array(N).fill(15).map(x => Math.random() * x),
+	size: 5,
+	// color: Array(N).fill(0).map(() =>
+			// 	[Math.random(), Math.random(), Math.random(), Math.random()]
+			// ),
+	color: 'rgba(0, 100, 200, .75)',
 
-	borderSize: 0,
+	borderSize: 0.5,
 	cluster: false,
 	borderColor: [.1,.2,.3,1]
 })
