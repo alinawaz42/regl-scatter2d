@@ -11,7 +11,7 @@ const rgba = require('color-rgba')
 
 
 let N = 1e5
-let scatter = createScatter({
+let draw = createScatter({
 	positions: generate(N),
 	// positions: [0,0, 1,1, -1,-1, 1,-1, -1,1, 0,1, 0,-1, 1,0, -1,0],
 
@@ -26,10 +26,9 @@ let scatter = createScatter({
 	cluster: false,
 	borderColor: [.1,.2,.3,1]
 })
-.autorange()
 
 
-scatter.draw()
+draw()
 
 /*
 let settings = createSettings([
@@ -98,34 +97,34 @@ let settings = createSettings([
 
 
 //interactions
-let canvas = scatter.canvas
-panZoom(canvas, e => {
-	let w = canvas.width
-	let h = canvas.height
-	let scale = scatter.scale
-	let translate = scatter.translate
+// let canvas = scatter.canvas
+// panZoom(canvas, e => {
+// 	let w = canvas.width
+// 	let h = canvas.height
+// 	let scale = scatter.scale
+// 	let translate = scatter.translate
 
-	translate[0] += e.dx / scale[0] / w
-	translate[1] -= e.dy / scale[1] / h
+// 	translate[0] += e.dx / scale[0] / w
+// 	translate[1] -= e.dy / scale[1] / h
 
-	let prevScale = scale.slice()
+// 	let prevScale = scale.slice()
 
-	scale[0] -= scale[0] * e.dz / w
-	scale[1] -= scale[1] * e.dz / w
+// 	scale[0] -= scale[0] * e.dz / w
+// 	scale[1] -= scale[1] * e.dz / w
 
-	let rx = e.x / w
-	let ry = (e.y) / h
+// 	let rx = e.x / w
+// 	let ry = (e.y) / h
 
-	translate[0] += e.x / scale[0] / w - e.x / prevScale[0] / w
-	translate[1] += (h - e.y) / scale[1] / h - (h - e.y) / prevScale[1] / h
-	scatter.update({
-		scale: e.dz ? scale : null,
-		translate: translate
-	})
+// 	translate[0] += e.x / scale[0] / w - e.x / prevScale[0] / w
+// 	translate[1] += (h - e.y) / scale[1] / h - (h - e.y) / prevScale[1] / h
+// 	scatter.update({
+// 		scale: e.dz ? scale : null,
+// 		translate: translate
+// 	})
 
-	scatter.clear()
-	scatter.draw()
-})
+// 	scatter.clear()
+// 	scatter.draw()
+// })
 
 
 function generate(N) {
