@@ -44,7 +44,11 @@ function createScatter (options) {
   //this texture keeps params of every point
   let pointTexture = regl.texture({
     format: 'rgba',
-    type: 'float'
+    type: 'uint8',
+    mipmap: true,
+    min: 'linear mipmap nearest',
+    mag: 'nearest',
+    wrap: 'clamp'
   })
 
   //buffer with upgoing ids
@@ -78,10 +82,10 @@ function createScatter (options) {
 
         vec4 point = texture2D(points, normCoords);
 
-        if (point.x < 0.) return;
+        if (point.z == 0.) return;
 
-        normCoords.x += point.x;
-        normCoords.y += point.y;
+        normCoords.x += point.x / 255.;
+        normCoords.y += point.y / 255.;
 
         gl_Position = vec4(normCoords * 2. - 1., 0, 1);
 
@@ -154,7 +158,7 @@ function createScatter (options) {
       // let radius = 2 << dim
       let shape = [256, 256]
 
-      let data = new Float32Array(Array(shape[0]*shape[1]*4).fill(-1))
+      let data = new Uint8Array(shape[0]*shape[1]*4)
 
       //walk all available points, snap to pixels
       let range = [bounds[2] - bounds[0], bounds[3] - bounds[1]]
@@ -166,9 +170,6 @@ function createScatter (options) {
         let nx = (x - bounds[0]) / range[0],
             ny = (y - bounds[1]) / range[1]
 
-        if (nx === 1) nx -= 1e-10
-        if (ny === 1) ny -= 1e-10
-
         //position in texture coords
         let tx = nx * shape[0],
             ty = ny * shape[1]
@@ -179,15 +180,19 @@ function createScatter (options) {
 
         //if point exists in texture
         let idx = sx + sy * shape[0]
+        let ptr = idx*4;
 
         //ignore already defined point
-        if (data[idx*4] >= 0) continue
+        if (data[ptr + 2] > 0) {
+          data[ptr + 2]++
+          continue
+        }
 
         //put new point offsets from the expected center
-        data[idx*4] = (tx - sx) / shape[0]
-        data[idx*4 + 1] = (ty - sy) / shape[1]
-        data[idx*4 + 2] = 0
-        data[idx*4 + 3] = 0
+        data[ptr] = 255 * (tx - sx)
+        data[ptr + 1] = 255 * (ty - sy)
+        data[ptr + 2] = 1
+        data[ptr + 3] = 0
       }
 
       //update texture
@@ -195,6 +200,7 @@ function createScatter (options) {
         shape: shape,
         data: data
       })
+      console.log(pointTexture)
     }
   }
 }

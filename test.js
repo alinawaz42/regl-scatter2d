@@ -10,7 +10,7 @@ const cluster = require('../point-cluster')
 const rgba = require('color-rgba')
 
 
-let N = 1e5
+let N = 1e3
 let draw = createScatter({
 	positions: generate(N),
 	// positions: [0,0, 1,1, -1,-1, 1,-1, -1,1, 0,1, 0,-1, 1,0, -1,0],
