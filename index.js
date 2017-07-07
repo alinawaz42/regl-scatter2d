@@ -7,8 +7,6 @@ const getBounds = require('array-bounds')
 const clamp = require('clamp')
 const atlas = require('font-atlas-sdf')
 const colorId = require('color-id')
-const snapPoints = require('snap-points-2d')
-const clusterPoints = require('../point-cluster')
 const normalize = require('array-normalize')
 
 module.exports = createScatter
@@ -16,8 +14,10 @@ module.exports = createScatter
 function createScatter (options) {
   if (!options) options = {}
 
-  //init regl
-  let regl
+  // persistent variables
+  let regl, gl, canvas, plot,
+      view, size,
+      pointTexture, ids, idBuffer
 
   // regl instance
   if (options.regl) regl = options.regl
@@ -34,15 +34,12 @@ function createScatter (options) {
     })
   }
 
-  //compatibility
-  let gl = regl._gl
-  let canvas = gl.canvas
+  // compatibility
+  gl = regl._gl
+  canvas = gl.canvas
 
-  //init
-  let bounds = [-Infinity, -Infinity, Infinity, Infinity]
-
-  //this texture keeps params of every point
-  let pointTexture = regl.texture({
+  // this texture keeps params of every point
+  pointTexture = regl.texture({
     format: 'rgba',
     type: 'uint8',
     mipmap: true,
@@ -51,12 +48,12 @@ function createScatter (options) {
     wrap: 'clamp'
   })
 
-  //buffer with upgoing ids
-  let ids = new Float32Array(4096*4096)
+  // buffer with upgoing ids
+  ids = new Float32Array(4096*4096)
   for (let i = 0, l = ids.length; i < l; i++) {
     ids[i] = i
   }
-  let idBuffer = regl.buffer({
+  idBuffer = regl.buffer({
     usage: 'static',
     type: 'float',
     data: ids
@@ -65,7 +62,7 @@ function createScatter (options) {
   update(options)
 
   // draw texture shader
-  let drawTexture = regl({
+  let draw = regl({
     vert: `
       precision highp float;
 
@@ -87,9 +84,11 @@ function createScatter (options) {
         normCoords.x += point.x / 255.;
         normCoords.y += point.y / 255.;
 
-        gl_Position = vec4(normCoords * 2. - 1., 0, 1);
+        vec2 viewCoords = normCoords;
 
-        gl_PointSize = .5;
+        gl_Position = vec4(viewCoords * 2. - 1., 0, 1);
+
+        gl_PointSize = point.w;
       }
     `,
     frag: `
@@ -111,19 +110,18 @@ function createScatter (options) {
   })
 
 
-  return draw
+  return redraw
 
 
-  function draw(opts) {
+  function redraw(opts) {
     if (opts) update(opts)
 
-    //TODO: make multipass-render here
+    // TODO: make multipass-render here for border types
 
-    drawTexture()
-    // this.drawPoints()
-    // this.drawTest()
+    draw()
   }
 
+  // take over options
   function update(opts) {
     let w = canvas.width, h = canvas.height
 
@@ -134,73 +132,72 @@ function createScatter (options) {
       selection,
       scale,
       translate,
-      size,
       color,
       borderSize,
       borderColor,
       glyph,
       pixelRatio,
-      viewBox,
-      dataBox
     } = options
 
+    // provide data view box
+    if (options.view) view = options.view
+    else if (!view) view = getBounds(positions, 2)
 
-    //update positions
+    if (options.size) size = options.size
+
+    // update positions
     if (positions != null) {
-      // this.positionBuffer(positions)
       let pointCount = Math.floor(positions.length / 2)
 
-      //update bounds
-      bounds = getBounds(positions, 2)
-
-      //texture with points
+      // texture with points
       // let dim = Math.ceil(Math.log2(Math.sqrt(positions.length/2)))
       // let radius = 2 << dim
       let shape = [256, 256]
 
       let data = new Uint8Array(shape[0]*shape[1]*4)
 
-      //walk all available points, snap to pixels
-      let range = [bounds[2] - bounds[0], bounds[3] - bounds[1]]
+      // normalize points
+      let npositions = normalize(positions, 2, view)
+
+      // walk all available points, snap to pixels
       for (let i = 0; i < pointCount; i++) {
-        //coords
+        // coords
         let x = positions[i*2], y = positions[i*2+1]
 
-        //normalized position
-        let nx = (x - bounds[0]) / range[0],
-            ny = (y - bounds[1]) / range[1]
+        // normalized position
+        let nx = npositions[i*2],
+            ny = npositions[i*2+1]
 
-        //position in texture coords
+        // position in texture coords
         let tx = nx * shape[0],
             ty = ny * shape[1]
 
-        //snapped position
+        // snapped position
         let sx = Math.floor(tx),
             sy = Math.floor(ty)
 
-        //if point exists in texture
+        // if point exists in texture
         let idx = sx + sy * shape[0]
         let ptr = idx*4;
 
-        //ignore already defined point
+        // ignore already defined point
         if (data[ptr + 2] > 0) {
           data[ptr + 2]++
           continue
         }
 
-        //put new point offsets from the expected center
+        // put new point offsets from the expected center
         data[ptr] = 255 * (tx - sx)
         data[ptr + 1] = 255 * (ty - sy)
         data[ptr + 2] = 1
-        data[ptr + 3] = 0
+        data[ptr + 3] = size[idx] || size;
       }
 
-      //update texture
+      // update texture
       pointTexture({
         shape: shape,
         data: data
       })
-      console.log(pointTexture)
     }
   }
 }
