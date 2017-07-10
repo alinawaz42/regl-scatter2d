@@ -16,7 +16,7 @@ function createScatter (options) {
 
   // persistent variables
   let regl, gl, canvas, plot,
-      view, size,
+      view, size, bounds, shape,
       pointTexture, ids, idBuffer
 
   // regl instance
@@ -67,28 +67,35 @@ function createScatter (options) {
       precision highp float;
 
       uniform vec2 shape;
+      uniform vec2 screen;
+      uniform vec4 bounds;
+      uniform vec4 view;
       uniform sampler2D points;
 
       attribute float id;
 
       void main () {
-        float x = mod(id, shape.x) + .5;
-        float y = floor(id / shape.x) + .5;
+        float x = mod(id, screen.x) + .5;
+        float y = floor(id / screen.x) + .5;
 
-        vec2 normCoords = vec2(x/shape.x, y/shape.y);
+        vec2 brange = vec2(bounds.z - bounds.x, bounds.w - bounds.y);
+        vec2 vrange = vec2(view.z - view.x, view.w - view.y);
+        vec2 normxy = vec2(x / screen.x, y / screen.y);
+        vec2 dataxy = normxy * vrange + view.xy;
+        vec2 textxy = (dataxy - bounds.xy) / brange;
 
-        vec4 point = texture2D(points, normCoords);
+        // FIXME: make more elegant
+        if (textxy.x > 1. || textxy.x < 0. || textxy.y > 1. || textxy.y < 0.) return;
+
+        vec4 point = texture2D(points, textxy);
 
         if (point.z == 0.) return;
 
-        normCoords.x += point.x / 255.;
-        normCoords.y += point.y / 255.;
+        vec2 viewxy = normxy;// + point.xy / 255.;
 
-        vec2 viewCoords = normCoords;
+        gl_Position = vec4(viewxy * 2. - 1., 0, 1);
 
-        gl_Position = vec4(viewCoords * 2. - 1., 0, 1);
-
-        gl_PointSize = point.w;
+        gl_PointSize = 1.;
       }
     `,
     frag: `
@@ -102,10 +109,17 @@ function createScatter (options) {
       }
     },
     uniforms: {
-      shape: [256,256],
-      points: pointTexture
+      shape: () => shape,
+      points: pointTexture,
+
+      bounds: () => bounds,
+      view: () => view,
+
+      //FIXME: pass real screen coords
+      screen: param => [param.viewportWidth, param.viewportHeight],
     },
-    count: 256*256,
+    //FIXME: there should be as many pts here as many screen points
+    count: param => param.viewportWidth*param.viewportHeight,
     primitive: 'points'
   })
 
@@ -127,37 +141,30 @@ function createScatter (options) {
 
     if (options.length != null) options = {positions: options}
 
-    let {
-      positions,
-      selection,
-      scale,
-      translate,
-      color,
-      borderSize,
-      borderColor,
-      glyph,
-      pixelRatio,
-    } = options
-
     // provide data view box
-    if (options.view) view = options.view
-    else if (!view) view = getBounds(positions, 2)
+    if (options.view) {
+      view = options.view
+    }
 
     if (options.size) size = options.size
 
     // update positions
-    if (positions != null) {
+    if (options.positions != null) {
+      let positions = new Float32Array(options.positions);
+
       let pointCount = Math.floor(positions.length / 2)
+
+      bounds = getBounds(positions, 2)
 
       // texture with points
       // let dim = Math.ceil(Math.log2(Math.sqrt(positions.length/2)))
       // let radius = 2 << dim
-      let shape = [256, 256]
+      shape = [128, 128]
 
       let data = new Uint8Array(shape[0]*shape[1]*4)
 
       // normalize points
-      let npositions = normalize(positions, 2, view)
+      let npositions = normalize(positions, 2, bounds)
 
       // walk all available points, snap to pixels
       for (let i = 0; i < pointCount; i++) {
@@ -189,8 +196,12 @@ function createScatter (options) {
         // put new point offsets from the expected center
         data[ptr] = 255 * (tx - sx)
         data[ptr + 1] = 255 * (ty - sy)
+
+        // point count
         data[ptr + 2] = 1
-        data[ptr + 3] = size[idx] || size;
+
+        // size of point
+        data[ptr + 3] = 10//size[idx] || size;
       }
 
       // update texture
@@ -198,6 +209,11 @@ function createScatter (options) {
         shape: shape,
         data: data
       })
+
+      // if no view defined - use bounds as view
+      if (!view) {
+        view = bounds
+      }
     }
   }
 }

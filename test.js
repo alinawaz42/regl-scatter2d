@@ -10,8 +10,10 @@ const cluster = require('../point-cluster')
 const rgba = require('color-rgba')
 const bounds = require('array-bounds')
 
-let N = 1e3
+let N = 1e4
 let data = generate(N)
+let view = [-10, -10, 10, 10]
+let zoom = .004
 
 let draw = createScatter({
 	container: document.body,
@@ -25,7 +27,7 @@ let draw = createScatter({
 			// ),
 	color: 'rgba(0, 100, 200, .75)',
 
-	view: [-5, -5, 5, 5]
+	view: view
 })
 
 
@@ -96,35 +98,30 @@ let settings = createSettings([
 })
 */
 
-
 //interactions
-let zoom = 1;
-panZoom(document.body, e => {
-	let w = document.body.width
-	let h = document.body.height
-	let scale = scatter.scale
-	let translate = scatter.translate
-
-	translate[0] += e.dx / scale[0] / w
-	translate[1] -= e.dy / scale[1] / h
-
-	let prevScale = scale.slice()
-
-	scale[0] -= scale[0] * e.dz / w
-	scale[1] -= scale[1] * e.dz / w
+panZoom(document.body.lastChild, e => {
+	let w = document.body.lastChild.offsetWidth
+	let h = document.body.lastChild.offsetHeight
 
 	let rx = e.x / w
-	let ry = (e.y) / h
+	let ry = e.y / h
 
-	translate[0] += e.x / scale[0] / w - e.x / prevScale[0] / w
-	translate[1] += (h - e.y) / scale[1] / h - (h - e.y) / prevScale[1] / h
-	scatter.update({
-		scale: e.dz ? scale : null,
-		translate: translate
-	})
+	if (e.dz) {
+		let dz = e.dz / w
+		let range = [view[2] - view[0], view[3] - view[1]]
+		view[0] -= rx * range[0] * dz
+		view[2] += (1 - rx) * range[0] * dz
 
-	scatter.clear()
-	scatter.draw()
+		view[1] -= (1 - ry) * range[1] * dz
+		view[3] += ry * range[1] * dz
+	}
+
+	view[0] -= zoom * e.dx
+	view[2] -= zoom * e.dx
+	view[1] += zoom * e.dy
+	view[3] += zoom * e.dy
+
+	draw({view: view})
 })
 
 
